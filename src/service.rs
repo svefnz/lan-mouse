@@ -1,6 +1,7 @@
 use crate::{
     capture::{Capture, CaptureType, ICaptureEvent},
     client::ClientManager,
+    clipboard::{channel, frame::Frame, state as clipboard_state, state::SyncState},
     config::{Config, ConfigClient},
     connect::LanMouseConnection,
     crypto,
@@ -9,15 +10,18 @@ use crate::{
     listen::{LanMouseListener, ListenerCreationError},
 };
 use futures::StreamExt;
+use input_clipboard::{InputClipboard, Snapshot, convert, map::Platform};
 use lan_mouse_ipc::{
     AsyncFrontendListener, ClientHandle, FrontendEvent, FrontendRequest, IpcError,
     IpcListenerCreationError, Position, Status,
 };
 use log;
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
+    rc::Rc,
     sync::{Arc, RwLock},
 };
 use thiserror::Error;
@@ -67,6 +71,22 @@ pub struct Service {
     /// map from capture handle to connection info
     incoming_conn_info: HashMap<ClientHandle, Incoming>,
     next_trigger_handle: u64,
+    /// local clipboard changes, `None` when clipboard sharing is off or
+    /// the platform has no backend
+    clipboard: Option<InputClipboard>,
+    /// clipboard frames arriving from peers
+    clipboard_listener: Option<channel::Listener>,
+    /// sends clipboard frames to peers
+    clipboard_client: Option<Rc<channel::Client>>,
+    /// change counters and echo suppression
+    clipboard_state: Rc<RefCell<SyncState>>,
+    /// latest local snapshot, so entering a client does no clipboard call
+    clipboard_snapshot: Option<Snapshot>,
+    /// platform whose representation names are in use locally
+    clipboard_platform: Platform,
+    clipboard_max_bytes: usize,
+    /// last clipboard status message shown to the frontend
+    clipboard_status: Option<String>,
 }
 
 #[derive(Debug)]
@@ -74,6 +94,24 @@ struct Incoming {
     fingerprint: String,
     addr: SocketAddr,
     pos: Position,
+}
+
+/// Await the next local clipboard change, or never if the feature is off.
+async fn next_clipboard_change(clipboard: Option<&mut InputClipboard>) -> Option<Snapshot> {
+    match clipboard {
+        Some(clipboard) => clipboard.next().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Await the next clipboard frame from a peer, or never if the feature is off.
+async fn next_clipboard_frame(
+    listener: Option<&mut channel::Listener>,
+) -> Option<(SocketAddr, Frame)> {
+    match listener {
+        Some(listener) => listener.recv().await,
+        None => std::future::pending().await,
+    }
 }
 
 impl Service {
@@ -102,6 +140,45 @@ impl Service {
         let emulation_backend = config.emulation_backend().map(|b| b.into());
         let emulation = Emulation::new(emulation_backend, listener);
 
+        // clipboard sharing: its own TLS/TCP channel, independent of the
+        // input path, so a large payload can never delay input
+        let clipboard_max_bytes = config.clipboard_max_bytes();
+        let (clipboard, clipboard_listener, clipboard_client) = if config.clipboard_enabled() {
+            let max_len = clipboard_max_bytes + 64 * 1024;
+            let clipboard = match InputClipboard::new(clipboard_max_bytes) {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    log::warn!("clipboard: backend unavailable: {e}");
+                    None
+                }
+            };
+            let listener = match channel::Listener::new(
+                config.port(),
+                &cert,
+                authorized_keys.clone(),
+                max_len,
+            )
+            .await
+            {
+                Ok(l) => Some(l),
+                Err(e) => {
+                    log::warn!("clipboard: channel listener unavailable: {e}");
+                    None
+                }
+            };
+            let client = match channel::Client::new(&cert) {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    log::warn!("clipboard: channel client unavailable: {e}");
+                    None
+                }
+            };
+            (clipboard, listener, client)
+        } else {
+            log::info!("clipboard sharing is disabled");
+            (None, None, None)
+        };
+
         // create dns resolver
         let resolver = DnsResolver::new()?;
 
@@ -123,6 +200,14 @@ impl Service {
             incoming_conn_info: Default::default(),
             incoming_conns: Default::default(),
             next_trigger_handle: 0,
+            clipboard,
+            clipboard_listener,
+            clipboard_client,
+            clipboard_state: Rc::new(RefCell::new(SyncState::default())),
+            clipboard_snapshot: None,
+            clipboard_platform: input_clipboard::map::current_platform(),
+            clipboard_max_bytes,
+            clipboard_status: None,
         };
         Ok(service)
     }
@@ -148,6 +233,8 @@ impl Service {
                 event = self.capture.event() => self.handle_capture_event(event),
                 event = self.resolver.event() => self.handle_resolver_event(event),
                 _ = self.config.changed() => self.handle_config_change(),
+                snapshot = next_clipboard_change(self.clipboard.as_mut()) => self.handle_clipboard_change(snapshot),
+                frame = next_clipboard_frame(self.clipboard_listener.as_mut()) => self.handle_clipboard_frame(frame),
                 r = signal::ctrl_c() => break r.expect("failed to wait for CTRL+C"),
             }
         }
@@ -159,6 +246,10 @@ impl Service {
         self.emulation.terminate().await;
         log::debug!("terminating dns resolver ...");
         self.resolver.terminate().await;
+        log::debug!("terminating clipboard ...");
+        if let Some(mut clipboard) = self.clipboard.take() {
+            clipboard.terminate();
+        }
 
         Ok(())
     }
@@ -354,12 +445,130 @@ impl Service {
             ICaptureEvent::ClientEntered(handle) => {
                 log::info!("entering client {handle} ...");
                 self.spawn_hook_command(handle, HookKind::Enter);
+                self.push_clipboard(handle);
             }
             ICaptureEvent::ClientLeft(handle) => {
                 log::info!("leaving client {handle} ...");
                 self.spawn_hook_command(handle, HookKind::Leave);
             }
         }
+    }
+
+    fn handle_clipboard_change(&mut self, snapshot: Option<Snapshot>) {
+        let Some(snapshot) = snapshot else {
+            return;
+        };
+
+        let hash = clipboard_state::hash(&snapshot);
+        {
+            let mut state = self.clipboard_state.borrow_mut();
+            if state.take_echo(hash) {
+                log::trace!("clipboard: ignoring the echo of our own write");
+                return;
+            }
+            state.on_local_change();
+        }
+
+        log::debug!("clipboard: local change {snapshot}");
+
+        // surface a degradation, otherwise clear a stale message
+        let status = if snapshot.dropped.is_empty() {
+            None
+        } else {
+            let dropped = snapshot
+                .dropped
+                .iter()
+                .map(|(name, size)| format!("{name} ({size} bytes)"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Some(format!(
+                "clipboard: not synced, over the size limit: {dropped}"
+            ))
+        };
+        self.clipboard_status = status.clone();
+        self.notify_frontend(FrontendEvent::ClipboardStatus(status));
+
+        self.clipboard_snapshot = Some(snapshot);
+    }
+
+    fn handle_clipboard_frame(&mut self, received: Option<(SocketAddr, Frame)>) {
+        let Some((addr, frame)) = received else {
+            return;
+        };
+
+        if self.clipboard_state.borrow().is_own_echo(frame.origin_seq) {
+            log::trace!("clipboard: {addr} echoed our own content, ignoring");
+            return;
+        }
+
+        let wire = Snapshot {
+            items: frame.items,
+            dropped: Vec::new(),
+        };
+        let local = convert::from_wire(self.clipboard_platform, &wire);
+        log::debug!("clipboard: received {local} from {addr}");
+
+        // record what we are about to write before writing it, so the
+        // resulting change event is recognized as our own echo
+        self.clipboard_state
+            .borrow_mut()
+            .expect_echo(clipboard_state::hash(&local));
+
+        let Some(clipboard) = &self.clipboard else {
+            return;
+        };
+        if let Err(e) = clipboard.write(&local) {
+            log::warn!("clipboard: could not apply content from {addr}: {e}");
+        }
+    }
+
+    /// Push the cached local snapshot to a client we just entered.
+    fn push_clipboard(&mut self, handle: ClientHandle) {
+        let Some(snapshot) = self.clipboard_snapshot.clone() else {
+            return;
+        };
+        let Some(client) = self.clipboard_client.clone() else {
+            return;
+        };
+        let Some(addr) = self.client_manager.active_addr(handle) else {
+            return;
+        };
+
+        let seq = {
+            let state = self.clipboard_state.borrow();
+            if !state.should_push(handle) {
+                log::trace!("clipboard: nothing new for {handle}");
+                return;
+            }
+            state.local_seq()
+        };
+
+        let wire = convert::to_wire(self.clipboard_platform, &snapshot);
+        if wire.size() > self.clipboard_max_bytes {
+            log::debug!(
+                "clipboard: {} bytes exceeds the configured limit, not pushing",
+                wire.size()
+            );
+            return;
+        }
+
+        let frame = Frame {
+            origin_seq: seq,
+            items: wire.items,
+        };
+        let state = self.clipboard_state.clone();
+        log::debug!(
+            "clipboard: pushing {} representation(s) to {handle}",
+            frame.items.len()
+        );
+
+        // off the service loop: a large transfer must not delay input
+        tokio::task::spawn_local(async move {
+            match client.send(addr, &frame).await {
+                Ok(()) => state.borrow_mut().on_pushed(handle, seq),
+                Err(e) => log::debug!("clipboard: push to {handle} failed: {e}"),
+            }
+        });
     }
 
     fn handle_resolver_event(&mut self, event: DnsEvent) {
@@ -397,6 +606,9 @@ impl Service {
         ));
         let keys = self.authorized_keys.read().expect("lock").clone();
         self.notify_frontend(FrontendEvent::AuthorizedUpdated(keys));
+        self.notify_frontend(FrontendEvent::ClipboardStatus(
+            self.clipboard_status.clone(),
+        ));
     }
 
     const ENTER_HANDLE_BEGIN: u64 = u64::MAX / 2 + 1;
@@ -466,12 +678,18 @@ impl Service {
         self.authorized_keys.write().expect("lock").insert(fp, desc);
         let keys = self.authorized_keys.read().expect("lock").clone();
         self.notify_frontend(FrontendEvent::AuthorizedUpdated(keys));
+        self.notify_frontend(FrontendEvent::ClipboardStatus(
+            self.clipboard_status.clone(),
+        ));
     }
 
     fn remove_authorized_key(&mut self, fp: String) {
         self.authorized_keys.write().expect("lock").remove(&fp);
         let keys = self.authorized_keys.read().expect("lock").clone();
         self.notify_frontend(FrontendEvent::AuthorizedUpdated(keys));
+        self.notify_frontend(FrontendEvent::ClipboardStatus(
+            self.clipboard_status.clone(),
+        ));
     }
 
     fn enumerate(&mut self) {

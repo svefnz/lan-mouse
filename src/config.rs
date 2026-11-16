@@ -60,8 +60,36 @@ fn default_path() -> Result<PathBuf, VarError> {
     Ok(PathBuf::from(default_path))
 }
 
+/// Clipboard sharing settings, all optional so an existing config file
+/// keeps working unchanged.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+struct TomlClipboard {
+    enabled: Option<bool>,
+    max_size_mb: Option<u32>,
+}
+
+/// Upper bound applied to `max_size_mb`. A mistyped value must not be
+/// able to make lan-mouse try to hold an unbounded clipboard snapshot.
+const MAX_CLIPBOARD_SIZE_MB: u32 = 512;
+const DEFAULT_CLIPBOARD_SIZE_MB: u32 = 100;
+
+impl TomlClipboard {
+    fn enabled_or_default(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
+
+    fn max_bytes(&self) -> usize {
+        let mb = self
+            .max_size_mb
+            .unwrap_or(DEFAULT_CLIPBOARD_SIZE_MB)
+            .clamp(1, MAX_CLIPBOARD_SIZE_MB);
+        mb as usize * 1024 * 1024
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 struct ConfigToml {
+    clipboard: Option<TomlClipboard>,
     capture_backend: Option<CaptureBackend>,
     emulation_backend: Option<EmulationBackend>,
     port: Option<u16>,
@@ -480,6 +508,23 @@ impl Config {
             .unwrap_or(DEFAULT_PORT)
     }
 
+    fn clipboard_config(&self) -> Option<&TomlClipboard> {
+        self.config_toml.as_ref().and_then(|c| c.clipboard.as_ref())
+    }
+
+    /// whether clipboard sharing is enabled on this machine
+    pub fn clipboard_enabled(&self) -> bool {
+        self.clipboard_config()
+            .is_none_or(TomlClipboard::enabled_or_default)
+    }
+
+    /// clipboard snapshot size limit in bytes
+    pub fn clipboard_max_bytes(&self) -> usize {
+        self.clipboard_config()
+            .map(TomlClipboard::max_bytes)
+            .unwrap_or(DEFAULT_CLIPBOARD_SIZE_MB as usize * 1024 * 1024)
+    }
+
     /// list of configured clients
     pub fn clients(&self) -> Vec<ConfigClient> {
         self.config_toml
@@ -582,5 +627,92 @@ impl Config {
         let _ = self.watch();
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(toml: &str) -> ConfigToml {
+        toml::from_str(toml).expect("config parses")
+    }
+
+    #[test]
+    fn a_config_without_a_clipboard_section_enables_it() {
+        let config = parse("port = 4242\n");
+        assert!(config.clipboard.is_none());
+        assert_eq!(
+            config.clipboard.as_ref().map(TomlClipboard::max_bytes),
+            None
+        );
+    }
+
+    #[test]
+    fn the_documented_clipboard_section_parses() {
+        let config = parse(
+            r#"
+port = 4242
+
+[clipboard]
+enabled = true
+max_size_mb = 100
+"#,
+        );
+        let clipboard = config.clipboard.expect("section present");
+        assert!(clipboard.enabled_or_default());
+        assert_eq!(clipboard.max_bytes(), 100 * 1024 * 1024);
+    }
+
+    #[test]
+    fn clipboard_can_be_disabled() {
+        let config = parse("[clipboard]\nenabled = false\n");
+        assert!(!config.clipboard.expect("section").enabled_or_default());
+    }
+
+    #[test]
+    fn an_empty_section_keeps_the_defaults() {
+        let config = parse("[clipboard]\n");
+        let clipboard = config.clipboard.expect("section");
+        assert!(clipboard.enabled_or_default());
+        assert_eq!(
+            clipboard.max_bytes(),
+            DEFAULT_CLIPBOARD_SIZE_MB as usize * 1024 * 1024
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_size_is_clamped() {
+        let huge = parse("[clipboard]\nmax_size_mb = 2000\n");
+        assert_eq!(
+            huge.clipboard.expect("section").max_bytes(),
+            MAX_CLIPBOARD_SIZE_MB as usize * 1024 * 1024
+        );
+
+        let zero = parse("[clipboard]\nmax_size_mb = 0\n");
+        assert_eq!(zero.clipboard.expect("section").max_bytes(), 1024 * 1024);
+    }
+
+    #[test]
+    fn sections_after_the_clipboard_section_still_parse() {
+        let config = parse(
+            r#"
+port = 4242
+
+[clipboard]
+max_size_mb = 8
+
+[authorized_fingerprints]
+"ab:cd" = "laptop"
+"#,
+        );
+        assert_eq!(
+            config.clipboard.expect("section").max_bytes(),
+            8 * 1024 * 1024
+        );
+        assert_eq!(
+            config.authorized_fingerprints.expect("map").get("ab:cd"),
+            Some(&"laptop".to_owned())
+        );
     }
 }

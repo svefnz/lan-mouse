@@ -395,6 +395,14 @@ release_bind = [ "KeyA", "KeyS", "KeyD", "KeyF" ]
 # optional port (defaults to 4242)
 port = 4242
 
+# optional clipboard sharing (enabled by default)
+[clipboard]
+# set to false to neither send nor apply the clipboard on this machine
+enabled = true
+# largest clipboard snapshot that is transferred, in MiB (defaults to 100,
+# clamped to 512). Content above it degrades to the representations that fit.
+max_size_mb = 100
+
 # list of authorized tls certificate fingerprints that
 # are accepted for incoming traffic
 [authorized_fingerprints]
@@ -439,7 +447,7 @@ Where `left` can be either `left`, `right`, `top` or `bottom`.
 - [ ] X11 Input Capture
 - [ ] Latency measurement and visualization
 - [ ] Bandwidth usage measurement and visualization
-- [ ] Clipboard support
+- [x] Clipboard support
 
 
 ## Detailed OS Support
@@ -487,3 +495,27 @@ The following sections detail the emulation and capture backends provided by lan
 - `windows`: Backend for input capture on Windows.
 - `macos`: Backend for input capture on MacOS.
 - `x11`: TODO (not yet supported)
+
+### Clipboard Support
+
+Clipboard sharing uses the platform clipboard through a separate
+TLS/TCP channel on the same configured port, so it never affects input
+latency.
+
+| Platform | text | html | rtf | image | file list | change detection |
+|----------|------|------|-----|-------|-----------|------------------|
+| MacOS    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | paths | 500 ms poll |
+| Windows  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | paths | event |
+| X11      | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | paths | event |
+| Wayland  | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | paths | event |
+
+- The clipboard is transferred when the cursor enters a client, and only
+  if it changed since the last transfer to that client. Moving the cursor
+  between machines never overwrites a clipboard that was not just copied.
+- File lists are transferred as `text/uri-list` paths only; file contents
+  are not copied. They are only usable when the two machines share a
+  mount.
+- Content that an application marks as concealed (password managers) is
+  never transferred.
+- Clipboard sharing can be disabled per machine with `[clipboard] enabled = false`
+  in the config file; it then neither sends nor applies clipboard content.

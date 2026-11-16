@@ -36,6 +36,39 @@ The dispatcher component takes events from the event receiver and passes them
 to the correct backend corresponding to the type of client.
 
 
+## Clipboard Channel
+
+Clipboard content does not fit the fixed-size event datagram, so it
+travels on a second, independent channel:
+
+```
+UDP :4242  DTLS   -> input events (13 bytes, loss tolerant, low latency)
+TCP :4242  TLS    -> clipboard frames (length prefixed, reliable, ordered)
+```
+
+TCP and UDP port namespaces are independent, so both use the configured
+`port` and no extra key is needed. The two channels share the same
+certificate: a peer presents one identity and one fingerprint, and the
+server accepts a clipboard connection only from a fingerprint listed in
+`authorized_keys`.
+
+Because the channels are separate, a clipboard transfer of any size
+cannot delay pointer or key events, and a peer running an older build
+that has no clipboard channel still exchanges input exactly as before.
+
+Frames are laid out as:
+
+```
+u32 frame_len (big endian)
+  u64 origin_seq      <- sender's clipboard change counter
+  u16 n_items
+  n_items * { u16 name_len, name, u32 data_len, data }
+```
+
+`origin_seq` lets a receiver recognize the echo of content it just
+pushed, which is what stops two machines from bouncing the same
+clipboard back and forth.
+
 ## Requests
 
 // TODO this currently works differently

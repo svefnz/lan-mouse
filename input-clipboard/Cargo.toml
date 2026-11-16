@@ -10,6 +10,7 @@ repository = "https://github.com/feschber/lan-mouse"
 futures-core = "0.3.30"
 log = "0.4.22"
 thiserror = "2.0.0"
+tokio = { version = "1.32.0", features = ["sync"] }
 
 [features]
 default = ["backend"]

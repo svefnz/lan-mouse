@@ -226,6 +226,10 @@ pub enum FrontendEvent {
     IncomingDisconnected(SocketAddr),
     /// failed connection attempt (approval for fingerprint required)
     ConnectionAttempt { fingerprint: String },
+    /// clipboard sync status for the frontend status line.
+    /// `None` clears it; a message reports a degradation or a transfer
+    /// in progress. Connection failures are never reported here.
+    ClipboardStatus(Option<String>),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]

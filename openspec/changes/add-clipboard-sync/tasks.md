@@ -3,22 +3,22 @@
 ## 1. Workspace scaffolding
 
 - [x] 1.1 Add an `input-clipboard` crate to the workspace with a stub `lib.rs` declaring the `Snapshot` type and the `Clipboard` trait; verify `cargo build -p input-clipboard` succeeds
-- [ ] 1.2 Add `clipboard-rs` and `tokio-rustls` as dependencies in the crates that use them; verify `cargo build --workspace` succeeds and `cargo clippy --workspace --all-targets --all-features` reports no new warnings
+- [x] 1.2 Add `clipboard-rs` and `tokio-rustls` as dependencies in the crates that use them; verify `cargo build --workspace` succeeds and `cargo clippy --workspace --all-targets --all-features` reports no new warnings
 
 ## 2. Clipboard backend and representation model
 
-- [ ] 2.1 Implement the macOS backend over `clipboard-rs`: enumerate all offered representations, read each as raw bytes, write a representation set; verify a unit test writes a value and reads the same representations back
-- [ ] 2.2 Add concealed/transient representation detection at snapshot time; verify a unit test with a fabricated representation list that includes a concealed marker yields no snapshot
-- [ ] 2.3 Add the canonical representation-name mapping table (both directions) with raw passthrough for unknown names; verify unit tests cover a known mapping each way, an unknown name surviving unchanged, and an empty name being rejected
-- [ ] 2.4 Add `CF_HTML` offset rewriting for transfers to and from Windows; verify a unit test with a fixed `CF_HTML` fixture round-trips byte offsets correctly and a malformed header is passed through untouched rather than corrupted
-- [ ] 2.5 Add the dummy backend used on platforms without a backend, logging that clipboard sharing is unavailable; verify the workspace builds on a non-macOS target and the log line is emitted once at startup
-- [ ] 2.6 Document the platform support matrix in the crate-level docs; verify `cargo doc -p input-clipboard` builds without warnings
+- [x] 2.1 Implement the macOS backend over `clipboard-rs`: enumerate all offered representations, read each as raw bytes, write a representation set; verify a unit test writes a value and reads the same representations back
+- [x] 2.2 Add concealed/transient representation detection at snapshot time; verify a unit test with a fabricated representation list that includes a concealed marker yields no snapshot
+- [x] 2.3 Add the canonical representation-name mapping table (both directions) with raw passthrough for unknown names; verify unit tests cover a known mapping each way, an unknown name surviving unchanged, and an empty name being rejected
+- [x] 2.4 Add `CF_HTML` offset rewriting for transfers to and from Windows; verify a unit test with a fixed `CF_HTML` fixture round-trips byte offsets correctly and a malformed header is passed through untouched rather than corrupted
+- [x] 2.5 Add the dummy backend used on platforms without a backend, logging that clipboard sharing is unavailable; verify the workspace builds on a non-macOS target and the log line is emitted once at startup
+- [x] 2.6 Document the platform support matrix in the crate-level docs; verify `cargo doc -p input-clipboard` builds without warnings
 
 ## 3. Frame codec
 
-- [ ] 3.1 Implement the length-prefixed frame encoder and decoder (`u32` length, `u64` origin sequence, item count, `(name, bytes)` items); verify a round-trip test covering zero items, one item, and several items with mixed name lengths
-- [ ] 3.2 Reject a declared frame length above the configured cap before allocating the body; verify a test with an oversized declared length returns an error without a large allocation
-- [ ] 3.3 Ensure a truncated frame yields no snapshot; verify a test feeding a partial body returns "incomplete" and the caller never observes a partial item list
+- [x] 3.1 Implement the length-prefixed frame encoder and decoder (`u32` length, `u64` origin sequence, item count, `(name, bytes)` items); verify a round-trip test covering zero items, one item, and several items with mixed name lengths
+- [x] 3.2 Reject a declared frame length above the configured cap before allocating the body; verify a test with an oversized declared length returns an error without a large allocation
+- [x] 3.3 Ensure a truncated frame yields no snapshot; verify a test feeding a partial body returns "incomplete" and the caller never observes a partial item list
 
 ## 4. Side channel
 
