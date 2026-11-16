@@ -22,24 +22,24 @@
 
 ## 4. Side channel
 
-- [ ] 4.1 Add a TCP listener on the configured port using TLS with the existing certificate, accepting only peers whose fingerprint is in `authorized_keys`; verify a test that an unknown peer's connection is refused and no bytes are read
-- [ ] 4.2 Add the lazy connector with a per-peer connection cache, invalidated on failure; verify an in-process test transferring a frame between two endpoints and reusing the cached connection for a second transfer
+- [x] 4.1 Add a TCP listener on the configured port using TLS with the existing certificate, accepting only peers whose fingerprint is in `authorized_keys`; verify a test that an unknown peer's connection is refused and no bytes are read
+- [x] 4.2 Add the lazy connector with a per-peer connection cache, invalidated on failure; verify an in-process test transferring a frame between two endpoints and reusing the cached connection for a second transfer
 - [ ] 4.3 Wire the channel's inbound arm into the service `select!` loop; verify two instances on the same host exchange a frame end to end
-- [ ] 4.4 Document the second channel in `DOC.md` (why TCP alongside UDP, and that the input protocol is unchanged); verify the described port behaviour matches `config.toml`
+- [x] 4.4 Document the second channel in `DOC.md` (why TCP alongside UDP, and that the input protocol is unchanged); verify the described port behaviour matches `config.toml`
 
 ## 5. Sync state and service hooks
 
-- [ ] 5.1 Implement `local_seq` and per-peer `last_pushed` gating; verify unit tests cover the four cases from design D2: change-then-enter transfers, enter-without-change skips, repeated crossings skip, and re-copying identical content transfers again
+- [x] 5.1 Implement `local_seq` and per-peer `last_pushed` gating; verify unit tests cover the four cases from design D2: change-then-enter transfers, enter-without-change skips, repeated crossings skip, and re-copying identical content transfers again
 - [ ] 5.2 Hook `ICaptureEvent::ClientEntered` to take the cached snapshot and send it; verify a manual two-machine test where text copied on one machine is pasted on the other
-- [ ] 5.3 Apply received snapshots and suppress the resulting local change event; verify a test that applying a snapshot does not increment the outbound sequence used for the sender, so no ping-pong occurs
-- [ ] 5.4 Never propagate an empty clipboard, and degrade over-cap content to the representations that fit; verify unit tests for both, and that a degradation emits a status event naming the dropped representation and its size
+- [x] 5.3 Apply received snapshots and suppress the resulting local change event; verify a test that applying a snapshot does not increment the outbound sequence used for the sender, so no ping-pong occurs
+- [x] 5.4 Never propagate an empty clipboard, and degrade over-cap content to the representations that fit; verify unit tests for both, and that a degradation emits a status event naming the dropped representation and its size
 - [ ] 5.5 Run the clipboard watcher on its own thread and communicate with the service through a channel; verify that entering a client while a large transfer is running does not delay pointer events
 
 ## 6. Configuration and IPC
 
-- [ ] 6.1 Add the `[clipboard]` section with `enabled` (default `true`) and `max_size_mb` (default `100`, clamped on load); verify config tests for a missing section, an explicit disable, and an out-of-range value being clamped
-- [ ] 6.2 Add the `FrontendEvent::ClipboardStatus` variant and include it in the initial state sync; verify a frontend that connects after a degradation still receives the current status
-- [ ] 6.3 Document the new configuration section in the `README.md` configuration reference; verify the documented example parses with the config loader's test helper
+- [x] 6.1 Add the `[clipboard]` section with `enabled` (default `true`) and `max_size_mb` (default `100`, clamped on load); verify config tests for a missing section, an explicit disable, and an out-of-range value being clamped
+- [x] 6.2 Add the `FrontendEvent::ClipboardStatus` variant and include it in the initial state sync; verify a frontend that connects after a degradation still receives the current status
+- [x] 6.3 Document the new configuration section in the `README.md` configuration reference; verify the documented example parses with the config loader's test helper
 
 ## 7. GTK frontend
 
@@ -56,7 +56,7 @@
 
 - [ ] 9.1 Run the cross-platform matrix (macOS, Windows, X11, Wayland pairs) for plain text, HTML, an image and a file list; verify each cell either works or is recorded as a documented limitation
 - [ ] 9.2 Confirm input latency is unaffected during a transfer at the size cap; verify by comparing pointer smoothness with and without a large transfer running
-- [ ] 9.3 Update the `README.md` roadmap entry and the platform support tables; verify the rendered tables list the new capability per platform
+- [x] 9.3 Update the `README.md` roadmap entry and the platform support tables; verify the rendered tables list the new capability per platform
 - [ ] 9.4 Run `cargo fmt`, `cargo clippy --workspace --all-targets --all-features` and `cargo test --workspace`; verify all are clean
 
 ## Workflow follow-up

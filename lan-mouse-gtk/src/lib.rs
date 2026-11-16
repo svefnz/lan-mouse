@@ -324,6 +324,10 @@ fn build_ui(app: &Application) {
                     FrontendEvent::IncomingDisconnected(addr) => {
                         window.show_toast(format!("{addr} disconnected").as_str());
                     }
+                    // shortcut: the clipboard status line is not rendered
+                    // yet, add it to the window template when the GTK UI
+                    // work is picked up
+                    FrontendEvent::ClipboardStatus(_) => {}
                 }
             }
         }
