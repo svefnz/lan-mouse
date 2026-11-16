@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "input-capture",
+    "input-clipboard",
     "input-emulation",
     "input-event",
     "lan-mouse-ipc",
@@ -28,6 +29,7 @@ shadow-rs = "1.2.0"
 
 [dependencies]
 input-event = { path = "input-event", version = "0.4.0" }
+input-clipboard = { path = "input-clipboard", version = "0.1.0", default-features = false }
 input-emulation = { path = "input-emulation", version = "0.4.0", default-features = false }
 input-capture = { path = "input-capture", version = "0.4.0", default-features = false }
 lan-mouse-cli = { path = "lan-mouse-cli", version = "0.3.0" }
@@ -64,6 +66,9 @@ rustls = { version = "0.23.12", default-features = false, features = [
     "std",
     "ring",
 ] }
+tokio-rustls = { version = "0.26", default-features = false, features = [
+    "ring",
+] }
 rcgen = "0.13.1"
 sha2 = "0.10.8"
 notify = "8.2.0"
@@ -74,6 +79,7 @@ libc = "0.2.148"
 [features]
 default = [
     "gtk",
+    "clipboard",
     "layer_shell_capture",
     "x11_capture",
     "libei_capture",
@@ -83,6 +89,7 @@ default = [
     "x11_emulation",
 ]
 gtk = ["dep:lan-mouse-gtk"]
+clipboard = ["input-clipboard/backend"]
 layer_shell_capture = ["input-capture/layer_shell"]
 x11_capture = ["input-capture/x11"]
 libei_capture = ["input-event/libei", "input-capture/libei"]

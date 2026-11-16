@@ -1,0 +1,23 @@
+[package]
+name = "input-clipboard"
+description = "cross-platform clipboard access library used by lan-mouse"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/feschber/lan-mouse"
+
+[dependencies]
+futures-core = "0.3.30"
+log = "0.4.22"
+thiserror = "2.0.0"
+
+[features]
+default = ["backend"]
+# platform clipboard access; disabling it leaves the dummy backend that never
+# produces snapshots
+backend = ["dep:clipboard-rs"]
+
+[dependencies.clipboard-rs]
+version = "0.3"
+optional = true
+default-features = false
