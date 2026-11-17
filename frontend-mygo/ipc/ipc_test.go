@@ -42,6 +42,9 @@ func startFakeServer(t *testing.T, handler lineHandler) *fakeServer {
 		_ = os.Remove(address) // leftover from a crashed run
 		listener = mustListen(t, network, address)
 	}
+	// tcp 127.0.0.1:0 asks the kernel for a free port; dial it back by the
+	// one it actually bound
+	address = listener.Addr().String()
 
 	done := make(chan struct{})
 	go func() {
@@ -372,6 +375,8 @@ func readFixtures(t *testing.T, path string) []string {
 	}
 	var lines []string
 	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		// a checkout with core.autocrlf leaves a CR before the LF
+		line = strings.TrimRight(line, "\r")
 		if line != "" {
 			lines = append(lines, line)
 		}
