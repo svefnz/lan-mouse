@@ -54,8 +54,8 @@
 
 ## 10. CI
 
-- [x] 10.1 Add a Go job to `.github/workflows/rust.yml` running `go build ./...`, `go vet ./...` and `go test ./...` in `frontend-mygo`; verify the job passes on ubuntu, macOS and Windows
-- [x] 10.2 Confirm the Rust jobs no longer install GTK on macOS unless the `gtk` feature is being built; verify the macOS job runs without `brew install gtk4 libadwaita` and still passes
+- [x] 10.1 Add a Go job to `.github/workflows/rust.yml` running `go build ./...`, `go vet ./...` and `go test ./...` in `frontend-mygo`; verify the job passes on ubuntu, macOS and Windows (run 44014159410, all three green)
+- [x] 10.2 Confirm the Rust jobs no longer install GTK on macOS unless the `gtk` feature is being built; verify the macOS job runs without `brew install gtk4 libadwaita` and still passes (run 44014159410)
 
 ## Workflow follow-up
 
