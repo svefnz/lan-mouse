@@ -35,17 +35,21 @@ jobs:
     defaults:
       run:
         working-directory: frontend-mygo
+    env:
+      # a step `env:` prefix is bash syntax, which the Windows runner does
+      # not have by default
+      CGO_ENABLED: '0'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           go-version: '1.27'
       - name: go build
-        run: CGO_ENABLED=0 go build ./...
+        run: go build ./...
       - name: go vet
-        run: CGO_ENABLED=0 go vet ./...
+        run: go vet ./...
       - name: go test
-        run: CGO_ENABLED=0 go test ./...
+        run: go test ./...
 
   ci:
     name: ${{ matrix.job }} ${{ matrix.os }}
