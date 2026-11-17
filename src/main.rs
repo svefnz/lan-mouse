@@ -11,9 +11,9 @@ use lan_mouse_cli::CliError;
 #[cfg(feature = "gtk")]
 use lan_mouse_gtk::GtkError;
 use lan_mouse_ipc::{IpcError, IpcListenerCreationError};
-use std::{env, future::Future, io, process};
 #[cfg(all(feature = "gtk", not(feature = "mygo")))]
 use std::process::Child;
+use std::{env, future::Future, io, process};
 use thiserror::Error;
 use tokio::task::LocalSet;
 
