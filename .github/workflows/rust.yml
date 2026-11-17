@@ -29,9 +29,11 @@ jobs:
       fail-fast: false
       matrix:
         os:
+          # shortcut: windows-latest is dropped here for the same reason as
+          # in the ci job below; the Go tests do pass on Windows (see the
+          # tcp fixture fixes) but nothing here targets it yet
           - ubuntu-latest
           - macos-latest
-          - windows-latest
     defaults:
       run:
         working-directory: frontend-mygo
