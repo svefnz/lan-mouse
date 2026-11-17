@@ -1,5 +1,7 @@
 use shadow_rs::ShadowBuilder;
 
+use std::{env, path::PathBuf, process::Command};
+
 fn main() {
     ShadowBuilder::builder()
         .deny_const(Default::default())
@@ -57,5 +59,63 @@ fn main() {
     }
     if x11_emulation {
         println!("cargo::rustc-cfg=x11_emulation");
+    }
+
+    if cfg!(feature = "mygo") {
+        build_ui();
+    }
+}
+
+/// Build the Go frontend into the cargo target directory, so a plain
+/// `cargo build` produces a complete application (design D5).
+fn build_ui() {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let frontend = manifest_dir.join("frontend-mygo");
+    println!("cargo::rerun-if-changed={}", frontend.display());
+
+    // OUT_DIR is <target>/<profile>/build/<crate>-<hash>/out; the UI
+    // binary belongs next to the lan-mouse binary, in <target>/<profile>
+    let profile_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("OUT_DIR is not inside a target directory")
+        .to_path_buf();
+
+    let go = env::var("GO").unwrap_or_else(|_| "go".to_string());
+    match Command::new(&go).arg("version").status() {
+        Ok(status) if status.success() => {}
+        Ok(status) => panic!(
+            "`{go} version` failed with {status}.\n\
+             The `mygo` feature builds the frontend in `frontend-mygo` with the Go\n\
+             toolchain (>= 1.27): install Go from https://go.dev/dl/, point the `GO`\n\
+             environment variable at your go binary, or build the GTK frontend instead:\n\
+             cargo build --no-default-features --features gtk"
+        ),
+        Err(err) => panic!(
+            "could not run `{go}`: {err}.\n\
+             The `mygo` feature builds the frontend in `frontend-mygo` with the Go\n\
+             toolchain (>= 1.27): install Go from https://go.dev/dl/, point the `GO`\n\
+             environment variable at your go binary, or build the GTK frontend instead:\n\
+             cargo build --no-default-features --features gtk"
+        ),
+    }
+
+    let mut binary = profile_dir.join("lan-mouse-ui");
+    if cfg!(target_os = "windows") {
+        binary.set_extension("exe");
+    }
+
+    // GOOS and GOARCH are inherited for cross compiling; cross compiling
+    // the UI is not solved beyond that (documented limitation)
+    let status = Command::new(&go)
+        .arg("build")
+        .arg("-o")
+        .arg(&binary)
+        .arg(".")
+        .current_dir(&frontend)
+        .status()
+        .expect("go vanished between version check and build");
+    if !status.success() {
+        panic!("building `frontend-mygo` failed: {go} build exited with {status}");
     }
 }

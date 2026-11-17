@@ -42,6 +42,9 @@ pub enum ServiceError {
 pub struct Service {
     /// configuration
     config: Config,
+    /// certificate for the clipboard channel, kept so sharing can be
+    /// started at runtime without reloading the key
+    cert: webrtc_dtls::crypto::Certificate,
     /// input capture
     capture: Capture,
     /// input emulation
@@ -185,6 +188,7 @@ impl Service {
         let port = config.port();
         let service = Self {
             config,
+            cert,
             capture,
             emulation,
             frontend_listener,
@@ -227,7 +231,7 @@ impl Service {
 
         loop {
             tokio::select! {
-                request = self.frontend_listener.next() => self.handle_frontend_request(request),
+                request = self.frontend_listener.next() => self.handle_frontend_request(request).await,
                 _ = self.frontend_event_pending.notified() => self.handle_frontend_pending().await,
                 event = self.emulation.event() => self.handle_emulation_event(event),
                 event = self.capture.event() => self.handle_capture_event(event),
@@ -254,12 +258,28 @@ impl Service {
         Ok(())
     }
 
-    fn handle_frontend_request(&mut self, request: Option<Result<FrontendRequest, IpcError>>) {
+    async fn handle_frontend_request(
+        &mut self,
+        request: Option<Result<FrontendRequest, IpcError>>,
+    ) {
         let request = match request.expect("frontend listener closed") {
             Ok(r) => r,
             Err(e) => return log::error!("error receiving request: {e}"),
         };
         match request {
+            // the handshake is consumed by the frontend listener; a Hello
+            // from an established connection is a protocol violation —
+            // answer with a fresh state sync
+            FrontendRequest::Hello {
+                version,
+                capabilities,
+            } => {
+                log::warn!(
+                    "unexpected handshake from an established frontend \
+                    (version {version}, capabilities {capabilities:?})"
+                );
+                self.sync_frontend();
+            }
             FrontendRequest::Activate(handle, active) => {
                 self.set_client_active(handle, active);
                 self.save_config();
@@ -309,6 +329,9 @@ impl Service {
                 self.update_leave_hook(handle, leave_hook)
             }
             FrontendRequest::SaveConfiguration => self.save_config(),
+            FrontendRequest::SetClipboardEnabled(enabled) => {
+                self.set_clipboard_enabled(enabled).await
+            }
         }
     }
 
@@ -329,6 +352,7 @@ impl Service {
         self.config.set_clients(clients);
         let authorized_keys = self.authorized_keys.read().expect("lock").clone();
         self.config.set_authorized_keys(authorized_keys);
+        self.config.set_port(self.port);
         if let Err(e) = self.config.write_back() {
             log::warn!("failed to write config: {e}");
         }
@@ -609,6 +633,9 @@ impl Service {
         self.notify_frontend(FrontendEvent::ClipboardStatus(
             self.clipboard_status.clone(),
         ));
+        self.notify_frontend(FrontendEvent::ClipboardSyncEnabled(
+            self.config.clipboard_enabled(),
+        ));
     }
 
     const ENTER_HANDLE_BEGIN: u64 = u64::MAX / 2 + 1;
@@ -753,6 +780,67 @@ impl Service {
         } else {
             self.notify_frontend(FrontendEvent::PortChanged(self.port, None));
         }
+    }
+
+    /// Apply a clipboard on/off request: update the config, save it and
+    /// start or stop the clipboard backends at runtime.
+    async fn set_clipboard_enabled(&mut self, enabled: bool) {
+        if self.config.clipboard_enabled() == enabled {
+            return;
+        }
+        self.config.set_clipboard_enabled(enabled);
+        self.save_config();
+        if enabled {
+            self.enable_clipboard().await;
+        } else {
+            self.disable_clipboard();
+        }
+        // a stale degradation message must not survive the toggle
+        self.clipboard_status = None;
+        self.notify_frontend(FrontendEvent::ClipboardStatus(None));
+        self.notify_frontend(FrontendEvent::ClipboardSyncEnabled(enabled));
+    }
+
+    /// start the clipboard watcher, TLS listener and client
+    async fn enable_clipboard(&mut self) {
+        if self.clipboard.is_none() {
+            match InputClipboard::new(self.clipboard_max_bytes) {
+                Ok(c) => self.clipboard = Some(c),
+                Err(e) => log::warn!("clipboard: backend unavailable: {e}"),
+            }
+        }
+        let max_len = self.clipboard_max_bytes + 64 * 1024;
+        if self.clipboard_listener.is_none() {
+            match channel::Listener::new(
+                self.port,
+                &self.cert,
+                self.authorized_keys.clone(),
+                max_len,
+            )
+            .await
+            {
+                Ok(l) => self.clipboard_listener = Some(l),
+                Err(e) => log::warn!("clipboard: channel listener unavailable: {e}"),
+            }
+        }
+        if self.clipboard_client.is_none() {
+            match channel::Client::new(&self.cert) {
+                Ok(c) => self.clipboard_client = Some(c),
+                Err(e) => log::warn!("clipboard: channel client unavailable: {e}"),
+            }
+        }
+    }
+
+    /// stop clipboard sharing: drop the watcher, listener and client so no
+    /// content is transferred until it is enabled again
+    fn disable_clipboard(&mut self) {
+        log::info!("clipboard sharing is disabled");
+        if let Some(mut clipboard) = self.clipboard.take() {
+            clipboard.terminate();
+        }
+        self.clipboard_listener = None;
+        self.clipboard_client = None;
+        self.clipboard_snapshot = None;
     }
 
     fn remove_client(&mut self, handle: ClientHandle) {

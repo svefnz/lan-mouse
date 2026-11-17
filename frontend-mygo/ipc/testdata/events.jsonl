@@ -1,0 +1,21 @@
+{"Hello":{"version":1,"capabilities":[]}}
+{"Created":[0,{"hostname":"laptop","fix_ips":["192.168.1.10"],"port":4242,"pos":"left","cmd":null,"leave_cmd":null},{"active":true,"active_addr":"192.168.1.10:4242","alive":true,"dns_ips":["192.168.1.11"],"ips":["192.168.1.10"],"has_pressed_keys":false,"resolving":false,"peer_commit":[171,205,18,52,86,120,154,188]}]}
+{"NoSuchClient":7}
+{"State":[0,{"hostname":"laptop","fix_ips":["192.168.1.10"],"port":4242,"pos":"left","cmd":null,"leave_cmd":null},{"active":true,"active_addr":"192.168.1.10:4242","alive":true,"dns_ips":["192.168.1.11"],"ips":["192.168.1.10"],"has_pressed_keys":false,"resolving":false,"peer_commit":[171,205,18,52,86,120,154,188]}]}
+{"Deleted":0}
+{"PortChanged":[4242,null]}
+{"PortChanged":[4242,"failed"]}
+{"Enumerate":[[0,{"hostname":"laptop","fix_ips":["192.168.1.10"],"port":4242,"pos":"left","cmd":null,"leave_cmd":null},{"active":true,"active_addr":"192.168.1.10:4242","alive":true,"dns_ips":["192.168.1.11"],"ips":["192.168.1.10"],"has_pressed_keys":false,"resolving":false,"peer_commit":[171,205,18,52,86,120,154,188]}]]}
+{"Error":"something failed"}
+{"CaptureStatus":"Enabled"}
+{"CaptureStatus":"Disabled"}
+{"EmulationStatus":"Enabled"}
+{"AuthorizedUpdated":{"ab:cd":"laptop"}}
+{"PublicKeyFingerprint":"aa:bb:cc:dd"}
+{"DeviceConnected":{"addr":"192.168.1.10:4242","fingerprint":"ab:cd"}}
+{"DeviceEntered":{"fingerprint":"ab:cd","addr":"192.168.1.10:4242","pos":"left"}}
+{"IncomingDisconnected":"192.168.1.10:4242"}
+{"ConnectionAttempt":{"fingerprint":"ab:cd"}}
+{"ClipboardStatus":null}
+{"ClipboardStatus":"over the limit"}
+{"Error":"incompatible frontend protocol version 99: this service speaks version 1"}

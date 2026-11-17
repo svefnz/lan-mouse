@@ -568,6 +568,30 @@ impl Config {
             .authorized_fingerprints = Some(fingerprints);
     }
 
+    /// enable or disable clipboard sharing, keeping other clipboard
+    /// settings (`max_size_mb`) unchanged
+    pub fn set_clipboard_enabled(&mut self, enabled: bool) {
+        if self.config_toml.is_none() {
+            self.config_toml = Some(Default::default());
+        }
+        let clipboard = self
+            .config_toml
+            .as_mut()
+            .expect("config")
+            .clipboard
+            .get_or_insert_with(TomlClipboard::default);
+        clipboard.enabled = Some(enabled);
+    }
+
+    /// persist the current listen port, so a port changed through a
+    /// frontend survives a restart
+    pub fn set_port(&mut self, port: u16) {
+        if self.config_toml.is_none() {
+            self.config_toml = Some(Default::default());
+        }
+        self.config_toml.as_mut().expect("config").port = Some(port);
+    }
+
     pub fn read_from_disk(&mut self) -> Result<bool, io::Error> {
         log::info!("reading config from {:?}", self.config_path);
 
@@ -668,6 +692,59 @@ max_size_mb = 100
     fn clipboard_can_be_disabled() {
         let config = parse("[clipboard]\nenabled = false\n");
         assert!(!config.clipboard.expect("section").enabled_or_default());
+    }
+
+    /// toggling the clipboard switch writes the `[clipboard] enabled` key
+    /// to the config file
+    #[test]
+    fn toggling_clipboard_writes_the_enabled_key() {
+        let dir =
+            std::env::temp_dir().join(format!("lan-mouse-config-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("config dir");
+        let path = dir.join(CONFIG_FILE_NAME);
+
+        let (tx, watch_rx) = tokio::sync::mpsc::channel(16);
+        let watcher = RecommendedWatcher::new(
+            move |res| {
+                let _ = tx.blocking_send(res);
+            },
+            notify::Config::default(),
+        )
+        .expect("watcher");
+
+        let mut config = Config {
+            args: Args {
+                port: None,
+                config: None,
+                capture_backend: None,
+                emulation_backend: None,
+                cert_path: None,
+                command: None,
+            },
+            cert_path: dir.join(CERT_FILE_NAME),
+            config_path: path.clone(),
+            config_dir: dir.clone(),
+            config_toml: Some(parse("port = 4242\n")),
+            watcher,
+            watch_rx,
+        };
+
+        config.set_clipboard_enabled(false);
+        config.write_back().expect("write back");
+        let written = fs::read_to_string(&path).expect("config file");
+        assert!(
+            written.contains("[clipboard]"),
+            "no clipboard section: {written}"
+        );
+        assert!(
+            written.contains("enabled = false"),
+            "not disabled: {written}"
+        );
+
+        config.set_clipboard_enabled(true);
+        config.write_back().expect("write back");
+        let written = fs::read_to_string(&path).expect("config file");
+        assert!(written.contains("enabled = true"), "not enabled: {written}");
     }
 
     #[test]

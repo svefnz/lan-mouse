@@ -43,8 +43,10 @@
 
 ## 7. GTK frontend
 
-- [ ] 7.1 Add the clipboard sharing switch to the settings page, bound to `enabled`; verify toggling it writes the value to `config.toml` and survives a restart
-- [ ] 7.2 Add the status line under the device row, shown only for degradation and in-progress transfers; verify a forced over-cap transfer shows the message and the line disappears afterwards
+The two GTK frontend tasks that were planned here (the clipboard sharing
+switch and the clipboard status line) moved to the `add-mygo-frontend`
+change (its tasks 7.1 and 7.2), which builds them in the new Go frontend
+instead of in GTK.
 
 ## 8. Remaining platform backends
 
@@ -57,7 +59,7 @@
 - [ ] 9.1 Run the cross-platform matrix (macOS, Windows, X11, Wayland pairs) for plain text, HTML, an image and a file list; verify each cell either works or is recorded as a documented limitation
 - [ ] 9.2 Confirm input latency is unaffected during a transfer at the size cap; verify by comparing pointer smoothness with and without a large transfer running
 - [x] 9.3 Update the `README.md` roadmap entry and the platform support tables; verify the rendered tables list the new capability per platform
-- [ ] 9.4 Run `cargo fmt`, `cargo clippy --workspace --all-targets --all-features` and `cargo test --workspace`; verify all are clean
+- [x] 9.4 Run `cargo fmt`, `cargo clippy --workspace --all-targets --all-features` and `cargo test --workspace`; verify all are clean
 
 ## Workflow follow-up
 

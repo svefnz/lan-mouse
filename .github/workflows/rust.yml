@@ -22,6 +22,31 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --check
 
+  go:
+    name: Go frontend ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    defaults:
+      run:
+        working-directory: frontend-mygo
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27'
+      - name: go build
+        run: CGO_ENABLED=0 go build ./...
+      - name: go vet
+        run: CGO_ENABLED=0 go vet ./...
+      - name: go test
+        run: CGO_ENABLED=0 go test ./...
+
   ci:
     name: ${{ matrix.job }} ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -42,16 +67,30 @@ jobs:
           - test
     steps:
       - uses: actions/checkout@v6
-      - name: Install Linux deps
+      # the mygo feature (default) builds frontend-mygo with the Go
+      # toolchain in build.rs
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27'
+      - name: Install Linux deps (x11 backends are default features)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install libx11-dev libxtst-dev libadwaita-1-dev libgtk-4-dev
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        run: brew install gtk4 libadwaita imagemagick
+          sudo apt-get install libx11-dev libxtst-dev
+      # the GTK dev packages are only needed by jobs that build the gtk
+      # feature (--all-features); the default build no longer needs GTK
+      - name: Install Linux deps (GTK, for all-features jobs only)
+        if: runner.os == 'Linux' && matrix.job != 'build'
+        run: sudo apt-get install libadwaita-1-dev libgtk-4-dev
+      # the macOS build job uses the default features, which no longer
+      # include the gtk frontend, so it runs without brew install
+      # gtk4 libadwaita; the all-features jobs still build the gtk
+      # feature and need it
+      - name: Install macOS dependencies (GTK, for all-features jobs only)
+        if: runner.os == 'macOS' && matrix.job != 'build'
+        run: brew install gtk4 libadwaita
       - name: Record macOS native lib versions for cache key
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && matrix.job != 'build'
         run: |
           echo "MACOS_LIB_VER=$(brew list --versions glib gtk4 libadwaita | tr '\n' '_')" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2

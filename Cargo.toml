@@ -78,7 +78,7 @@ libc = "0.2.148"
 
 [features]
 default = [
-    "gtk",
+    "mygo",
     "clipboard",
     "layer_shell_capture",
     "x11_capture",
@@ -88,6 +88,9 @@ default = [
     "rdp_emulation",
     "x11_emulation",
 ]
+# build the Go frontend in `frontend-mygo` and run it by default
+mygo = []
+# build the GTK frontend instead (kept for comparison and rollback)
 gtk = ["dep:lan-mouse-gtk"]
 clipboard = ["input-clipboard/backend"]
 layer_shell_capture = ["input-capture/layer_shell"]

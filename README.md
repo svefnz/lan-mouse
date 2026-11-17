@@ -15,7 +15,7 @@ Focus lies on performance, ease of use and a maintainable implementation that ca
 
 ***blazingly fast™*** because it's written in rust.
 
-- _Now with a gtk frontend_
+- _Now with a native Go frontend (no GUI toolkit needed at build time)_
 
 <picture>
     <source media="(prefers-color-scheme: dark)" srcset="/screenshots/dark.png?raw=true">
@@ -157,11 +157,11 @@ can be easily compiled via cargo or nix:
 
 ### Compiling and installing manually:
 ```sh
-# compile in release mode
+# compile in release mode (builds both binaries: lan-mouse and lan-mouse-ui)
 cargo build --release
 
-# install lan-mouse
-sudo cp target/release/lan-mouse /usr/local/bin/
+# install both binaries (lan-mouse-ui must sit next to lan-mouse)
+sudo cp target/release/lan-mouse target/release/lan-mouse-ui /usr/local/bin/
 ```
 
 ### Compiling and installing via cargo:
@@ -169,6 +169,12 @@ sudo cp target/release/lan-mouse /usr/local/bin/
 # will end up in ~/.cargo/bin
 cargo install lan-mouse
 ```
+
+`cargo install` installs the daemon entry point only; the frontend
+binary built by the Go toolchain stays in `target/release/lan-mouse-ui`.
+Copy it next to `lan-mouse` afterwards, or point `LAN_MOUSE_UI` at it.
+Without `lan-mouse-ui`, `lan-mouse` falls back to running the daemon
+directly (headless).
 
 ### Compiling and installing via nix:
 ```sh
@@ -186,8 +192,13 @@ E.g. if only support for sway is needed, the following command produces
 an executable with support for only the `layer-shell` capture backend
 and `wlroots` emulation backend:
 ```sh
-cargo build --no-default-features --features layer_shell_capture,wlroots_emulation
+cargo build --no-default-features --features mygo,layer_shell_capture,wlroots_emulation
 ```
+Note that `--no-default-features` also drops the frontend features:
+add `mygo` for the Go frontend, or `gtk` for the GTK frontend (which
+needs the GTK development packages). Without any frontend feature,
+`lan-mouse` runs the daemon directly.
+
 For a detailed list of available features, checkout the [Cargo.toml](./Cargo.toml)
 </details>
 
@@ -214,11 +225,39 @@ git config core.hooksPath .githooks
 The `pre-commit` script runs `cargo fmt --all` (and fails if files were modified), `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --all-features`.
 
 ### Dependencies & Compiling from Source
+
+The default build needs only the Rust and Go toolchains on every
+platform — no GUI toolkit, no `pkg-config`, no development headers:
+
+```sh
+cargo build --release
+```
+
+This produces `target/release/lan-mouse` (daemon, cli and entry point)
+and `target/release/lan-mouse-ui` (the graphical frontend, built by the
+Go toolchain from [`frontend-mygo/`](./frontend-mygo)). On Linux the
+frontend needs the GTK 3 **runtime** libraries at run time — desktop
+distributions ship them by default — but never any development headers.
+
 <details>
     <summary>MacOS</summary>
 
 ```sh
 # Install dependencies
+brew install go rust
+
+# Build both binaries
+cargo build --release
+
+# Optional: build the .app bundle (contains both binaries, ad hoc
+# signed, no bundled dylibs)
+scripts/makeicns.sh          # optional, for the app icon
+scripts/bundle-macos.sh release
+```
+
+The previous GTK frontend stays available as a fallback:
+
+```sh
 brew install libadwaita pkg-config imagemagick
 cargo install cargo-bundle
 # Create the macOS icon file
@@ -234,6 +273,11 @@ scripts/copy-macos-dylib.sh
     <summary>Ubuntu and derivatives</summary>
 
 ```sh
+# default build: Rust + Go, nothing else
+snap install rustup --classic   # or install rustup another way
+# frontend run time deps (usually preinstalled): libgtk-3-0
+
+# only needed for the GTK frontend fallback:
 sudo apt install libadwaita-1-dev libgtk-4-dev libx11-dev libxtst-dev
 ```
 </details>
@@ -242,6 +286,10 @@ sudo apt install libadwaita-1-dev libgtk-4-dev libx11-dev libxtst-dev
     <summary>Arch and derivatives</summary>
 
 ```sh
+# default build: Rust + Go, nothing else
+# frontend run time deps (usually preinstalled): gtk3
+
+# only needed for the GTK frontend fallback:
 sudo pacman -S libadwaita gtk libx11 libxtst
 ```
 </details>
@@ -250,6 +298,10 @@ sudo pacman -S libadwaita gtk libx11 libxtst
     <summary>Fedora and derivatives</summary>
 
 ```sh
+# default build: Rust + Go, nothing else
+# frontend run time deps (usually preinstalled): gtk3
+
+# only needed for the GTK frontend fallback:
 sudo dnf install libadwaita-devel libXtst-devel libX11-devel
 ```
 </details>
@@ -270,6 +322,18 @@ nix develop
 
 <details>
     <summary>Windows</summary>
+
+The default build needs [Rust](https://www.rust-lang.org/tools/install)
+and [Go](https://go.dev/dl/) only:
+
+```powershell
+cargo build --release
+```
+
+Both binaries end up in `target/release/`: `lan-mouse.exe` and
+`lan-mouse-ui.exe`.
+
+Only the GTK frontend fallback needs GTK:
 
 - First install [Rust](https://www.rust-lang.org/tools/install).
 
@@ -313,9 +377,12 @@ the gtk frontend (see conditional compilation).
 
 ## Usage
 <details>
-    <summary>Gtk Frontend</summary>
+    <summary>Frontend</summary>
 
-By default the gtk frontend will open when running `lan-mouse`.
+By default the graphical frontend (`lan-mouse-ui`) opens when running
+`lan-mouse`. If no service is running yet, the frontend starts one; when
+it closes, a service it started is stopped again. The GTK frontend is
+available as a fallback with `--features gtk` and works the same way.
 
 To connect a device you want to control, simply click the `Add` button and enter the hostname
 of the device.
@@ -435,6 +502,7 @@ Where `left` can be either `left`, `right`, `top` or `bottom`.
 
 ## Roadmap
 - [x] Graphical frontend (gtk + libadwaita)
+- [x] Graphical frontend in Go (default build, no GUI toolkit needed at build time)
 - [x] respect xdg-config-home for config file location.
 - [x] IP Address switching
 - [x] Liveness tracking Automatically ungrab mouse when client unreachable
@@ -495,6 +563,29 @@ The following sections detail the emulation and capture backends provided by lan
 - `windows`: Backend for input capture on Windows.
 - `macos`: Backend for input capture on MacOS.
 - `x11`: TODO (not yet supported)
+
+### Frontend Support
+
+The graphical frontend (`lan-mouse-ui`) is written in Go on top of
+[mygo](https://github.com/egoist/mygo) and drawn by the framework
+itself: no webview, no HTML.
+
+| Platform | needs at build time | needs at run time |
+|----------|---------------------|-------------------|
+| MacOS    | Rust + Go           | nothing beyond the system |
+| Windows  | Rust + Go           | nothing beyond the system |
+| Linux    | Rust + Go           | GTK 3 runtime libraries (shipped by desktop distributions) |
+
+- The default build produces the graphical frontend without requiring
+  GTK development headers, `pkg-config`, or any other system GUI
+  toolkit at build time — on Linux it needs the GTK 3 **runtime**
+  libraries at run time, but never development headers.
+- The frontend and the service talk over a documented, self-describing
+  local socket protocol (see [DOC.md](./DOC.md)), so a frontend can be
+  written in any language.
+- The GTK 4 + libadwaita frontend remains available as a fallback:
+  `cargo build --no-default-features --features gtk` (needs the GTK
+  development packages from the build sections above).
 
 ### Clipboard Support
 

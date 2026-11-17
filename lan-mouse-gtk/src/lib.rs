@@ -328,6 +328,11 @@ fn build_ui(app: &Application) {
                     // yet, add it to the window template when the GTK UI
                     // work is picked up
                     FrontendEvent::ClipboardStatus(_) => {}
+                    // the GTK frontend predates the handshake; it never
+                    // receives this event
+                    FrontendEvent::Hello { .. } => {}
+                    // the clipboard frontend work moved to the Go frontend
+                    FrontendEvent::ClipboardSyncEnabled(_) => {}
                 }
             }
         }

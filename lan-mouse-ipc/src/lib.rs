@@ -58,6 +58,12 @@ pub enum IpcError {
 
 pub const DEFAULT_PORT: u16 = 4242;
 
+/// Protocol version of the frontend IPC. A frontend sends this in
+/// [`FrontendRequest::Hello`] as its first message and the service answers
+/// with [`FrontendEvent::Hello`]. A frontend whose first message is anything
+/// else is treated as a legacy frontend (version 0, no capabilities).
+pub const IPC_PROTOCOL_VERSION: u32 = 1;
+
 #[derive(Debug, Default, Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Position {
@@ -230,10 +236,26 @@ pub enum FrontendEvent {
     /// `None` clears it; a message reports a degradation or a transfer
     /// in progress. Connection failures are never reported here.
     ClipboardStatus(Option<String>),
+    /// handshake reply, sent in response to [`FrontendRequest::Hello`] as
+    /// the first message of a connection
+    Hello {
+        version: u32,
+        capabilities: Vec<String>,
+    },
+    /// whether clipboard sharing is enabled on this machine, so a
+    /// frontend can show the current state of the switch
+    ClipboardSyncEnabled(bool),
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub enum FrontendRequest {
+    /// handshake, sent as the first message of a connection; a frontend
+    /// whose first message is anything else is treated as a legacy frontend
+    /// (version 0, no capabilities)
+    Hello {
+        version: u32,
+        capabilities: Vec<String>,
+    },
     /// activate/deactivate client
     Activate(ClientHandle, bool),
     /// add a new client
@@ -270,6 +292,8 @@ pub enum FrontendRequest {
     UpdateLeaveHook(u64, Option<String>),
     /// save config file
     SaveConfiguration,
+    /// enable or disable clipboard sharing on this machine
+    SetClipboardEnabled(bool),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]

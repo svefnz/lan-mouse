@@ -12,3 +12,7 @@ extfile.conf
 # flatpak files
 .flatpak-builder
 repo
+
+# go frontend build output (`cargo build` writes into target/ instead)
+frontend-mygo/frontend-mygo
+frontend-mygo/lan-mouse-ui
